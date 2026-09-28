@@ -1,0 +1,143 @@
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: localdroid-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER} -d ${DB_NAME}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+
+  migrate:
+    image: postgres:16
+    container_name: localdroid-migrate
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - ./localdroid-native-amd64/server/migrations:/migrations:ro
+      - ./scripts/migrate.sh:/migrate.sh:ro
+
+    entrypoint:
+      - /bin/bash
+      - /migrate.sh
+
+    restart: "no"
+
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: localdroid-mosquitto
+    restart: unless-stopped
+
+    ports:
+      - "1883:1883"
+
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mqtt_auth:/mosquitto/auth
+
+
+  localdroid:
+    build:
+      context: .
+      dockerfile: localdroid/Dockerfile
+
+    container_name: localdroid-server
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+
+    ports:
+      - "8080:8080"
+
+    environment:
+
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+
+      PUBLIC_URL: http://${SERVER_IP}:8080
+      EXTERNAL_URL: http://${SERVER_IP}:8080
+      ALLOWED_ORIGINS: http://${SERVER_IP}:8080
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSLMODE: disable
+      DB_MAX_CONNS: 50
+
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+
+      MQTT_EXTERNAL_HOST: ${SERVER_IP}
+      MQTT_EXTERNAL_PORT: 1883
+      MQTT_EXTERNAL_USE_TLS: "false"
+      MQTT_USE_TLS: "false"
+      MQTT_AUTH_DIR: /mosquitto/auth
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_EXPIRY: 60
+      JWT_REFRESH_EXPIRY: 168
+      JWT_ISSUER: localdroid-docker
+
+      DEPLOYMENT_MODE: airgapped
+      CLOUD_MODE: "false"
+      ALLOW_REMOTE_ENROLLMENT: "false"
+
+      STORAGE_PATH: ./storage
+      MAX_FILE_SIZE: 500
+
+      LOCALDROID_ADMIN_EMAIL: ${LOCALDROID_ADMIN_EMAIL}
+      LOCALDROID_ADMIN_PASSWORD: ${LOCALDROID_ADMIN_PASSWORD}
+
+      LICENSE_SERVER_URL: ""
+      LICENSE_PUBLIC_KEY: woL+6yGOhnbu9E+iALVqMzIx1Uez7Rk2kP8pEXIQDDc=
+
+    volumes:
+      - localdroid_storage:/app/storage
+      - mqtt_auth:/mosquitto/auth
+
+
+volumes:
+
+  postgres_data:
+
+  localdroid_storage:
+
+  mosquitto_data:
+
+  mqtt_auth:

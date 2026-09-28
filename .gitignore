@@ -1,0 +1,7 @@
+.env
+
+vendor/localdroid/
+vendor/*.tar.gz
+
+backups/
+*.log
