@@ -142,6 +142,66 @@ Restart:
 docker compose restart
 ```
 
+## Updating LocalDroid
+
+LocalDroid versions are pinned in:
+
+```text
+scripts/download-localdroid.sh
+```
+
+When a new LocalDroid version is released:
+
+1. Find the new Linux AMD64 release filename and SHA-256 checksum.
+2. Add the new version to `scripts/download-localdroid.sh`.
+3. Change `LOCALDROID_VERSION` in `.env`.
+4. Back up the database.
+5. Remove the currently downloaded LocalDroid runtime.
+6. Download the new version.
+7. Rebuild and recreate the containers.
+8. Verify the logs and container status.
+
+Example database backup:
+
+```bash
+docker exec localdroid-postgres \
+  pg_dump -U localdroid localdroid \
+  > localdroid-backup.sql
+```
+
+Remove the old downloaded runtime:
+
+```bash
+rm -rf vendor/localdroid
+```
+
+Download the newly configured version:
+
+```bash
+./scripts/download-localdroid.sh
+```
+
+Rebuild LocalDroid:
+
+```bash
+docker compose build --no-cache localdroid
+```
+
+Apply the update:
+
+```bash
+docker compose up -d
+```
+
+Verify:
+
+```bash
+docker compose ps -a
+docker compose logs --tail=100 localdroid
+```
+
+The migration container will apply any new database migrations included with the updated LocalDroid release.
+
 ## Configuration
 
 Deployment-specific configuration is stored in:
@@ -161,23 +221,6 @@ vendor/localdroid/
 This directory is also excluded from Git.
 
 Persistent application data is stored in Docker volumes.
-
-## Updating
-
-LocalDroid is currently version-pinned by the download script.
-
-To update to a newer release, update:
-
-```text
-scripts/download-localdroid.sh
-```
-
-with the new version, release filename, and SHA-256 checksum, then rebuild:
-
-```bash
-docker compose build --no-cache localdroid
-docker compose up -d
-```
 
 ## Ports
 
